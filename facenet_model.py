@@ -43,71 +43,52 @@ class FaceNet(nn.Module):
 
     def forward(self,x:torch.Tensor):
         #Nx3x56x56
-        print(x.shape)
         x=self.conv1(x)
         #Nx3x56x56
-        print(x.shape)
         x=self.conv2(x)
         #Nx64x56x56
-        print(x.shape)
         x=self.conv3(x)
         #Nx192x56x56
-        print(x.shape)
         x=self.maxpool1(x)
         #Nx192x28x28
-        print(x.shape)
         x=self.inception1a(x)
         #Nx256x28x28
-        print(x.shape)
         x=self.inception1b(x)
         #Nx480x28x28
-        print(x.shape)
         x=self.maxpool2(x)
         #Nx480x14x14
-        print(x.shape)
         x=self.inception2a(x)
         #Nx512x14x14
-        print(x.shape)
         if self.training:
             aux1=self.inter1(x)#Nx1
         else:
             aux1=None
         x=self.inception2b(x)
         #Nx512x14x14
-        print(x.shape)
         x=self.inception2c(x)
         #Nx512x14x14
-        print(x.shape)
         x=self.inception2d(x)
         #Nx528x14x14
-        print(x.shape)
         if self.training:
             aux2=self.inter2(x)#Nx1
         else:
             aux2=None
         x=self.inception2e(x)
         #Nx832x14x14
-        print(x.shape)
         x=self.maxpool3(x)
         #Nx832x7x7
-        print(x.shape)
         x=self.inception3a(x)
         #Nx832x7x7
-        print(x.shape)
         x=self.inception3b(x)
         #Nx1024x7x7
-        print(x.shape)
         x=self.avgpool(x)
         #Nx1024x1x1
-        print(x.shape)
         x=nn.Flatten()(x)
         #Nx1024
-        print(x.shape)
         x=self.dropout(x)
         #Nx1024
         x=self.fc(x)
         #Nx1
-        print(x.shape)
         x=nn.Sigmoid()(x)
         #Nx1
         return x,aux1,aux2
