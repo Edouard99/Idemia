@@ -164,4 +164,4 @@ class InceptionInterModule(nn.Module):
 
     def forward(self,x: torch.Tensor):
         x=self.out(x)
-        
+        return x
