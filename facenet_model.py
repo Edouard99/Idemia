@@ -91,7 +91,10 @@ class FaceNet(nn.Module):
         #Nx1
         x=nn.Sigmoid()(x)
         #Nx1
-        return x,aux1,aux2
+        if self.training:
+            return x,aux1,aux2
+        else:
+            return x
 
 
 
