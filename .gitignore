@@ -1,0 +1,5 @@
+*.pdf
+Data_visu.ipynb
+*.raw
+*.txt
+/__pycache__
