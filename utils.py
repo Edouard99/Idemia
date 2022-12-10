@@ -70,16 +70,15 @@ def training(num_epochs,facenet,optimizer,scheduler,dataloader_t,dataloader_v,de
         facenet.eval()
         for i, dataj in enumerate(dataloader_t, 0):
             x=dataj[0].float().to(device)
-            yh=dataj[1].float().to(device)
+            gt=dataj[1].float().to(device)
             y=facenet(x).view(-1)
             loss=lossfunction(y,gt)
             L_t_e.append(loss.item())
             pred=y>threshold
-            gt=yh
-            tp_t+=torch.sum(((y>0.5)==gt)[torch.where((gt)==1)]).item()#TP
-            fn_t+=torch.sum(((y>0.5)!=gt)[torch.where((gt)==1)]).item()#FN
-            tn_t+=torch.sum(((y>0.5)==gt)[torch.where((gt)==0)]).item()#TN
-            fp_t+=torch.sum(((y>0.5)!=gt)[torch.where((gt)==0)]).item()#FP
+            tp_t+=torch.sum(((pred)==gt)[torch.where((gt)==1)]).item()#TP
+            fn_t+=torch.sum(((pred)!=gt)[torch.where((gt)==1)]).item()#FN
+            tn_t+=torch.sum(((pred)==gt)[torch.where((gt)==0)]).item()#TN
+            fp_t+=torch.sum(((pred)!=gt)[torch.where((gt)==0)]).item()#FP
         for i, dataj in enumerate(dataloader_v, 0):
             x=dataj[0].float().to(device)
             gt=dataj[1].float().to(device)
@@ -87,10 +86,10 @@ def training(num_epochs,facenet,optimizer,scheduler,dataloader_t,dataloader_v,de
             loss=lossfunction(y,gt)
             L_v_e.append(loss.item())
             pred=y>threshold
-            tp_v+=torch.sum(((y>0.5)==gt)[torch.where((gt)==1)]).item()#TP
-            fn_v+=torch.sum(((y>0.5)!=gt)[torch.where((gt)==1)]).item()#FN
-            tn_v+=torch.sum(((y>0.5)==gt)[torch.where((gt)==0)]).item()#TN
-            fp_v+=torch.sum(((y>0.5)!=gt)[torch.where((gt)==0)]).item()#FP
+            tp_v+=torch.sum(((pred)==gt)[torch.where((gt)==1)]).item()#TP
+            fn_v+=torch.sum(((pred)!=gt)[torch.where((gt)==1)]).item()#FN
+            tn_v+=torch.sum(((pred)==gt)[torch.where((gt)==0)]).item()#TN
+            fp_v+=torch.sum(((pred)!=gt)[torch.where((gt)==0)]).item()#FP
         far_v=fp_v/(tn_v+fp_v)
         frr_v=fn_v/(tp_v+fn_v)
         far_t=fp_t/(tn_t+fp_t)
