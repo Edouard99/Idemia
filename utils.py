@@ -4,13 +4,66 @@ import torch
 import tqdm
 import numpy as np
 
+def generate_datasets(path_images:str,path_label:str,split_value:float=0.7):
+    """
+    Generates validation and training dataset from image
+    and label files.
+    This function handle ensure that the proportions of 0 and 1 labels in 
+    training and validation dataset are the same
+    Args:
+        path_images(str) : path to binary file that contains images
+        path_label(str) : path to txt file that contains labels
+        split_value(float) : portion of data that will be included in training dataset
+                0<split_value<1
+                training dataset instances = splitvalue x images instances
+                valudation dataset instances = (1-split value) x images instances
+    
+    """
+    if split_value>=1:
+        print("Your split value has been set to 0.7, split value should be between 0 and 1 \n")
+        split_value=0.7
+    elif split_value<=0:
+        print("Your split value has been set to 0.7, split value should be between 0 and 1 \n")
+        split_value=0.7
+    with open(path_label, 'rb') as f:
+        label=f.read().splitlines()
+        for k,elem in enumerate(label):
+            label[k]=int(elem)
+        label=np.array(label)
+    with open(path_images, 'rb') as f:
+        data = np.fromfile(f, dtype=np.dtype(np.uint8))
+        data = data.reshape((len(label),56, 56, 3))
+    data_0=data[np.where(label==0)[0]]  #Select all 0 labeled images
+    data_1=data[np.where(label==1)[0]]  #Select all 1 labeled images
+    data_0_t=data_0[:int(len(data_0)*split_value)]
+    data_1_t=data_1[:int(len(data_1)*split_value)]
+    data_0_v=data_0[int(len(data_0)*split_value):]
+    data_1_v=data_1[int(len(data_1)*split_value):]
+    train_ds=dataset(data_0_t,data_1_t)
+    val_ds=dataset(data_0_v,data_1_v)
+    return train_ds,val_ds
+
 class dataset(Dataset):
+    """
+    Generate a dataset object from data_0 and data_1 
+    A data augmentation pipeline is implemented for training :
+        - images are flipped horizontally randomly
+        - images are translated and rotated randomly
+    For both training and evaluation a normalization is performed on images
+    Set the parameter eval to True for evaluation pipeline and to False for training pipeline
+
+    Args:
+        data_0(np.array): array containing images labeled as 0
+        data_1(np.array): array containing images labeled as 1    
+    """
     def __init__(self, data_0, data_1):
         self.samples = []
-        self.transform=transforms.Compose([  transforms.RandomHorizontalFlip(p=0.5),
+        self.eval=False
+        self.transform_training=transforms.Compose([  transforms.RandomHorizontalFlip(p=0.5),
                                 transforms.RandomAffine(20,(0.12,0.12),(0.8,1.2),interpolation=transforms.InterpolationMode.NEAREST,fill=0),
                                 transforms.Normalize((0.5, 0.5, 0.5), (0.5, 0.5, 0.5))
                                 ])
+        self.transform_eval=transforms.Compose([transforms.Normalize((0.5, 0.5, 0.5), (0.5, 0.5, 0.5))])
         for img in data_0:
             img=transforms.ToTensor()(img)
             self.samples.append((img,0))
@@ -23,11 +76,24 @@ class dataset(Dataset):
 
     def __getitem__(self, id):
         (img,label)=self.samples[id]
-        img=self.transform(img)
+        if self.eval:
+            img=self.transform_eval(img)
+        else :
+            img=self.transform_training(img)
         return (img,label)
 
 
 def lossfunction(x,y):
+    """
+    Loss function based on Binary Cross Entropy(BCE)
+    As the training dataset is imbalanced the BCE loss is used with weight 
+    to handle imbalanced data (weight calculated according to the porportion
+    of 0 and 1 labels in the batch)
+    Input should be 2 tensors of size (Batch_size)
+    Args:
+        x(torch.tensor): predicted tensor
+        y(torch.tensor): ground truth tensor
+    """
     num_0=torch.where(y==0)[0].shape[0]
     num_1=x.shape[0]-num_0
     w0=0.
@@ -54,6 +120,7 @@ def training(num_epochs,facenet,optimizer,scheduler,dataloader_t,dataloader_v,de
         tp_v,fn_v,tn_v,fp_v=0,0,0,0
 
         facenet.train()
+        dataloader_t.dataset.eval=False
         for i, dataj in (enumerate(dataloader_t, 0)):
             facenet.zero_grad()
             x=dataj[0].float().to(device)
@@ -68,6 +135,8 @@ def training(num_epochs,facenet,optimizer,scheduler,dataloader_t,dataloader_v,de
             L_t_t.append([loss.item(),loss_aux1.item(),loss_aux2.item(),total_loss.item()])
             
         facenet.eval()
+        dataloader_t.dataset.eval=True
+        dataloader_v.dataset.eval=True
         for i, dataj in enumerate(dataloader_t, 0):
             x=dataj[0].float().to(device)
             gt=dataj[1].float().to(device)
