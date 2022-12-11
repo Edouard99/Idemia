@@ -43,6 +43,30 @@ def generate_datasets(path_images:str,path_label:str,split_value:float=0.7):
     val_ds=dataset(data_0_v,data_1_v)
     return train_ds,val_ds
 
+def generate_datasets_test(path_images:str,path_label:str):
+    """
+    Generates test dataset from image
+    and label files.
+    Args:
+        path_images(str) : path to binary file that contains images
+        path_label(str) : path to txt file that contains labels
+    
+    """
+    with open(path_label, 'rb') as f:
+        label=f.read().splitlines()
+        for k,elem in enumerate(label):
+            label[k]=int(elem)
+        label=np.array(label)
+    with open(path_images, 'rb') as f:
+        data = np.fromfile(f, dtype=np.dtype(np.uint8))
+        data = data.reshape((len(label),56, 56, 3))
+    data_0=data[np.where(label==0)[0]]  #Select all 0 labeled images
+    data_1=data[np.where(label==1)[0]]  #Select all 1 labeled images
+    test_ds=dataset(data_0,data_1)
+    test_ds.eval=True
+    return test_ds
+
+
 class dataset(Dataset):
     """
     Generate a dataset object from data_0 and data_1 
@@ -108,14 +132,58 @@ def lossfunction(x,y):
     return torch.nn.BCELoss(w)(x.float(),y.float())
 
 def training(num_epochs,facenet,optimizer,scheduler,dataloader_t,dataloader_v,device,alpha1,alpha2,threshold,path,checkpoint=None):
-    if checkpoint!=None:
-        starting_epoch=checkpoint["epoch"]
+    """
+    Training for the network
+    If a checkpoint dictionnary is used the state of network and optimizer will be initialized from the checkpoint
+    At each epoch :
+        - A training on the training set is performed
+        - An evaluation on the training set is performed (compute the loss and Hter metric)
+        - An evaluation on the validation set is performed  (compute the loss and Hter metric)
+        - A dictionnary D(epoch_N) is generated and stored. It contains:
+            ->epoch value
+            ->model state dict
+            ->optimizer state dict
+            ->List of all (from epoch 0 to epoch_N) the average loss calculated during for each epoch training on training set
+            ->List of all (from epoch 0 to epoch_N) the average loss calculated during for each epoch evaluation on training set
+            ->List of all (from epoch 0 to epoch_N) the average loss calculated during for each epoch evaluation on validation set
+            ->A metrics dict based on the result of evaluation on training set
+            ->A metrics dict based on the result of evaluation on validation set
+
+    The metric dict contains :
+        -True positive number
+        -True negative number
+        -False positive number
+        -False negative number
+        -FAR=(False Positive)/(False Positive + True Negative)
+        -FRR=(False Negative)/(False Negative + True Positive)
+        -HTER=0.5*(FAR+FRR)
+
+    Args:
+        num_epochs(int): total number of epochs
+        facenet(torch.nn.model): net used
+        optimizer: optimizer used for training
+        scheduler: scheduler used for training
+        dataloader_t: dataloader of the training set
+        dataloader_v:  dataloader of the validation set
+        device: device used (CPU/GPU)
+        alpha1: weight of the loss of the first intermediate output of the net used
+        alpha2: weight of the loss of the second intermediate output of the net used
+        threshold: threshold used to predict the label of a given image with the net output
+                    if net(x)>threshold:
+                        prediction=1
+                    if net(x)<=threshold:
+                        prediction=0
+        path: path to a directory where the dictionnary D(epoch) will be stored
+        checkpoint: a dictionnary of type D(epoch) to use to start the training from a checkpoint  
+    """
+    if checkpoint!=None: #Load checpoint state
+        starting_epoch=checkpoint["epoch"]+1
         facenet.load_state_dict(checkpoint['model_state_dict'])
         optimizer.load_state_dict(checkpoint['optimizer_state_dict'])
         Loss_train_train=checkpoint["loss_train_train"]
         Loss_train_eval=checkpoint["loss_train_eval"]
         Loss_val_eval=checkpoint["loss_val_eval"]
-    else:
+    else: # Initialize
         starting_epoch=0
         Loss_train_train=[]
         Loss_train_eval=[]
@@ -128,40 +196,42 @@ def training(num_epochs,facenet,optimizer,scheduler,dataloader_t,dataloader_v,de
         tp_v,fn_v,tn_v,fp_v=0,0,0,0
 
         facenet.train()
-        dataloader_t.dataset.eval=False
-        for i, dataj in (enumerate(dataloader_t, 0)):
+        dataloader_t.dataset.eval=False #Training data pipeline
+        for i, dataj in (enumerate(dataloader_t, 0)): #Training
             facenet.zero_grad()
             x=dataj[0].float().to(device)
             gt=dataj[1].float().to(device)
-            y,aux1,aux2=facenet(x)
+            y,aux1,aux2=facenet(x) #Final and intermediate output are used 
             loss=lossfunction(y.view(-1),gt)
             loss_aux1=lossfunction(aux1.view(-1),gt)
             loss_aux2=lossfunction(aux2.view(-1),gt)
-            total_loss=(loss+alpha1*loss_aux1+alpha2*loss_aux2)/(1+alpha1+alpha2)
+            total_loss=(loss+alpha1*loss_aux1+alpha2*loss_aux2)/(1+alpha1+alpha2) #Total loss value calculated as a weighted average 
             total_loss.backward()
             optimizer.step()
-            L_t_t.append([loss.item(),loss_aux1.item(),loss_aux2.item(),total_loss.item()])
+            L_t_t.append([loss.item(),loss_aux1.item(),loss_aux2.item(),total_loss.item()]) #Loss of this batch training
             
         facenet.eval()
-        dataloader_t.dataset.eval=True
-        dataloader_v.dataset.eval=True
-        for i, dataj in enumerate(dataloader_t, 0):
+        dataloader_t.dataset.eval=True #Evaluation data pipeline
+        dataloader_v.dataset.eval=True #Evaluation data pipeline
+
+        for i, dataj in enumerate(dataloader_t, 0): #Evaluation on training set
             x=dataj[0].float().to(device)
             gt=dataj[1].float().to(device)
             y=facenet(x).view(-1)
             loss=lossfunction(y,gt)
-            L_t_e.append(loss.item())
+            L_t_e.append(loss.item()) #Loss of this batch evaluation
             pred=y>threshold
             tp_t+=torch.sum(((pred)==gt)[torch.where((gt)==1)]).item()#TP
             fn_t+=torch.sum(((pred)!=gt)[torch.where((gt)==1)]).item()#FN
             tn_t+=torch.sum(((pred)==gt)[torch.where((gt)==0)]).item()#TN
             fp_t+=torch.sum(((pred)!=gt)[torch.where((gt)==0)]).item()#FP
-        for i, dataj in enumerate(dataloader_v, 0):
+
+        for i, dataj in enumerate(dataloader_v, 0): #Evaluation on validation set
             x=dataj[0].float().to(device)
             gt=dataj[1].float().to(device)
             y=facenet(x).view(-1)
             loss=lossfunction(y,gt)
-            L_v_e.append(loss.item())
+            L_v_e.append(loss.item()) #Loss of this batch evaluation
             pred=y>threshold
             tp_v+=torch.sum(((pred)==gt)[torch.where((gt)==1)]).item()#TP
             fn_v+=torch.sum(((pred)!=gt)[torch.where((gt)==1)]).item()#FN
@@ -191,3 +261,4 @@ def training(num_epochs,facenet,optimizer,scheduler,dataloader_t,dataloader_v,de
             'metrics_train':{'tp':tp_t,'fn':fn_t,'fp':fp_t,'tn':tn_t,'far':far_t,'frr':frr_t,'hter':hter_t},
             'metrics_val':{'tp':tp_v,'fn':fn_v,'fp':fp_v,'tn':tn_v,'far':far_v,'frr':frr_v,'hter':hter_v}
             }, path+"checkpoint_{}.pth".format(epoch))
+        

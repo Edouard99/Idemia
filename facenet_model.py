@@ -234,3 +234,10 @@ class InceptionInterModule(nn.Module):
     def forward(self,x: torch.Tensor):
         x=self.out(x)
         return x
+
+def create_test_model(dropout,dropout_inter,device,checkpoint):
+    device= torch.device("cuda:0")
+    facenet=FaceNet(dropout,dropout_inter,True).to(device) #Creates the model
+    facenet.load_state_dict(checkpoint['model_state_dict'])
+    facenet.eval()
+    return facenet
