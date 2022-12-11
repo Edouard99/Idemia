@@ -107,12 +107,20 @@ def lossfunction(x,y):
     w[torch.where(y==1)[0]]=w1
     return torch.nn.BCELoss(w)(x.float(),y.float())
 
-def training(num_epochs,facenet,optimizer,scheduler,dataloader_t,dataloader_v,device,alpha1,alpha2,threshold,path):
-
-    Loss_train_train=[]
-    Loss_train_eval=[]
-    Loss_val_eval=[]
-    for epoch in tqdm.tqdm(range(num_epochs)):
+def training(num_epochs,facenet,optimizer,scheduler,dataloader_t,dataloader_v,device,alpha1,alpha2,threshold,path,checkpoint=None):
+    if checkpoint!=None:
+        starting_epoch=checkpoint["epoch"]
+        facenet.load_state_dict(checkpoint['model_state_dict'])
+        optimizer.load_state_dict(checkpoint['optimizer_state_dict'])
+        Loss_train_train=checkpoint["loss_train_train"]
+        Loss_train_eval=checkpoint["loss_train_eval"]
+        Loss_val_eval=checkpoint["loss_val_eval"]
+    else:
+        starting_epoch=0
+        Loss_train_train=[]
+        Loss_train_eval=[]
+        Loss_val_eval=[]
+    for epoch in tqdm.tqdm(range(starting_epoch,num_epochs)):
         L_t_t=[]
         L_t_e=[]
         L_v_e=[]
@@ -172,7 +180,7 @@ def training(num_epochs,facenet,optimizer,scheduler,dataloader_t,dataloader_v,de
         Loss_train_train.append(err_t_t)
         Loss_train_eval.append(err_t_e)
         Loss_val_eval.append(err_v_e)
-        print("Training : Loss {} ||| Hter {} \t Validation : Loss {} ||| Hter {}".format(err_t_e,hter_t,err_v_e,hter_v))
+        print("Epoch : {} | \t Training : Loss {} ||| Hter {} | \t Validation : Loss {} ||| Hter {}".format(epoch,err_t_e,hter_t,err_v_e,hter_v))
         torch.save({
             'epoch': epoch,
             'model_state_dict': facenet.state_dict(),
