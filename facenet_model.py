@@ -236,6 +236,16 @@ class InceptionInterModule(nn.Module):
         return x
 
 def create_test_model(dropout,dropout_inter,device,checkpoint):
+    """
+    Creates and returns a model with a given checkpoint (weights).
+    Args:
+        droupout (float) : Dropout probability for final module prediction, 
+                should be 0<dropout<1
+        dropout_inter (float) : Dropout probability for intermediate modules 
+                prediction, should be 0<dropout_inter<1
+        device : cpu or gpu to use
+        checkpoint : dict to use to load the weights of the model
+    """
     device= torch.device("cuda:0")
     facenet=FaceNet(dropout,dropout_inter,True).to(device) #Creates the model
     facenet.load_state_dict(checkpoint['model_state_dict'])
